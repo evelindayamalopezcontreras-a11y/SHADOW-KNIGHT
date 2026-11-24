@@ -1,4 +1,3 @@
-
 const config = {
   type: Phaser.AUTO,
   parent: "game",
@@ -19,18 +18,27 @@ const config = {
   scene: { create, update }
 };
 
-const game = new Phaser.Game(config);
+new Phaser.Game(config);
 
 let player, platforms, cursors, keys;
-let sword, enemies = [], particles;
-let hp = 100, attacking = false, attackTime = 0;
-let facing = 1, jumpReady = true;
+let enemies = [];
+let chestSystem, inventory, shop, bossSystem;
+let healthBar, coinsText;
+let hp = 100;
+let facing = 1;
+let attacking = false;
+let attackTime = 0;
+let jumpReady = true;
 let buttons = {};
-let hud, healthBar, world;
+let uiOpen = false;
 
 function create() {
   const scene = this;
-  world = scene;
+
+  hp = 100;
+  enemies = [];
+  buttons = {};
+  uiOpen = false;
 
   createTextures(scene);
   createBackground(scene);
@@ -44,19 +52,26 @@ function create() {
 
   player = scene.physics.add.sprite(150, 550, "hero");
   player.setCollideWorldBounds(true);
-  player.setBounce(0);
   player.setSize(34, 65);
   player.setOffset(15, 10);
   player.setDepth(10);
 
   scene.physics.add.collider(player, platforms);
 
-  enemies = [];
   createEnemy(scene, 650, 600);
   createEnemy(scene, 1050, 600);
 
+  chestSystem = new ChestSystem(scene);
+  chestSystem.create(420, 480);
+  chestSystem.create(1180, 495);
+
+  inventory = new InventorySystem(scene);
+  shop = new WeaponShop(scene, inventory);
+
+  bossSystem = new BossSystem(scene);
+
   cursors = scene.input.keyboard.createCursorKeys();
-  keys = scene.input.keyboard.addKeys("A,D,W,SPACE,J");
+  keys = scene.input.keyboard.addKeys("A,D,W,SPACE,J,I,E");
 
   createControls(scene);
   createHUD(scene);
@@ -64,14 +79,26 @@ function create() {
 
   scene.cameras.main.setBounds(0, 0, 1800, 720);
   scene.cameras.main.startFollow(player, true, 0.08, 0.08);
-
   scene.physics.world.setBounds(0, 0, 1800, 720);
+
+  scene.input.keyboard.on("keydown-I", () => {
+    if (!uiOpen) {
+      inventory.toggle();
+      uiOpen = inventory.visible;
+    }
+  });
+
+  scene.input.keyboard.on("keydown-E", () => {
+    if (!uiOpen) {
+      shop.open();
+      uiOpen = true;
+    }
+  });
 }
 
 function createTextures(scene) {
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
 
-  // Personaje
   g.fillStyle(0x161c32);
   g.fillRoundedRect(15, 15, 34, 60, 12);
   g.fillStyle(0x303c60);
@@ -86,7 +113,6 @@ function createTextures(scene) {
   g.generateTexture("hero", 64, 90);
   g.clear();
 
-  // Plataforma
   g.fillStyle(0x242b3d);
   g.fillRect(0, 0, 100, 20);
   g.fillStyle(0x566078);
@@ -94,7 +120,6 @@ function createTextures(scene) {
   g.generateTexture("platform", 100, 20);
   g.clear();
 
-  // Enemigo
   g.fillStyle(0x39243e);
   g.fillRoundedRect(8, 10, 44, 45, 12);
   g.fillStyle(0xff526b);
@@ -103,30 +128,30 @@ function createTextures(scene) {
   g.generateTexture("enemy", 60, 65);
   g.clear();
 
-  // Partícula
   g.fillStyle(0x9dbaff);
   g.fillCircle(5, 5, 5);
   g.generateTexture("spark", 10, 10);
+
   g.destroy();
 }
 
 function createBackground(scene) {
   const bg = scene.add.graphics().setDepth(-20);
 
-  bg.fillGradientStyle(0x111a32, 0x111a32, 0x080b14, 0x080b14, 1);
+  bg.fillGradientStyle(
+    0x111a32, 0x111a32,
+    0x080b14, 0x080b14, 1
+  );
   bg.fillRect(0, 0, 1800, 720);
 
-  // Luz de fondo
   bg.fillStyle(0x435c94, 0.12);
   bg.fillCircle(900, 200, 260);
 
-  // Montañas lejanas
   bg.fillStyle(0x171d30);
   for (let x = 0; x < 1900; x += 180) {
     bg.fillTriangle(x, 520, x + 100, 180, x + 250, 520);
   }
 
-  // Columnas
   for (let x = 80; x < 1800; x += 290) {
     bg.fillStyle(0x252b3d);
     bg.fillRect(x, 250, 45, 380);
@@ -137,31 +162,34 @@ function createBackground(scene) {
     bg.fillRect(x + 10, 260, 8, 360);
   }
 
-  // Suelo
   bg.fillStyle(0x101522);
   bg.fillRect(0, 660, 1800, 60);
 }
 
 function addPlatform(scene, x, y, width, height) {
-  const p = scene.add.tileSprite(x, y, width, height, "platform");
-  scene.physics.add.existing(p, true);
-  platforms.add(p);
+  const platform = platforms.create(x, y, "platform");
+  platform.setDisplaySize(width, height);
+  platform.refreshBody();
 }
 
 function createEnemy(scene, x, y) {
   const enemy = scene.physics.add.sprite(x, y, "enemy");
+
   enemy.setCollideWorldBounds(true);
-  enemy.setBounce(0);
   enemy.setSize(40, 50);
   enemy.hp = 3;
   enemy.direction = -1;
+  enemy.lastHit = 0;
+
   scene.physics.add.collider(enemy, platforms);
   enemies.push(enemy);
 }
 
 function createControls(scene) {
   const makeButton = (x, y, symbol, name) => {
-    const bg = scene.add.circle(x, y, 43, 0x26344f, 0.85)
+    const bg = scene.add.circle(
+      x, y, 43, 0x26344f, 0.85
+    )
       .setScrollFactor(0)
       .setStrokeStyle(3, 0x8799c7, 0.8)
       .setDepth(100);
@@ -169,7 +197,10 @@ function createControls(scene) {
     scene.add.text(x, y, symbol, {
       fontSize: "30px",
       color: "#ffffff"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(101);
 
     bg.setInteractive();
 
@@ -182,10 +213,38 @@ function createControls(scene) {
   makeButton(190, 620, "▶", "right");
   makeButton(1100, 620, "▲", "jump");
   makeButton(1200, 620, "⚔", "attack");
+
+  const bag = scene.add.text(1050, 30, "🎒", {
+    fontSize: "30px",
+    backgroundColor: "#26344f",
+    padding: { x: 10, y: 8 }
+  }).setScrollFactor(0).setDepth(150).setInteractive();
+
+  bag.on("pointerdown", () => {
+    if (shop.panel) closeShop();
+    inventory.toggle();
+    uiOpen = inventory.visible;
+  });
+
+  const store = scene.add.text(1150, 30, "⚒", {
+    fontSize: "30px",
+    backgroundColor: "#26344f",
+    padding: { x: 10, y: 8 }
+  }).setScrollFactor(0).setDepth(150).setInteractive();
+
+  store.on("pointerdown", () => {
+    if (inventory.visible) {
+      inventory.toggle();
+    }
+    shop.open();
+    uiOpen = true;
+  });
 }
 
 function createHUD(scene) {
-  hud = scene.add.container(30, 25).setScrollFactor(0).setDepth(200);
+  const hud = scene.add.container(30, 25)
+    .setScrollFactor(0)
+    .setDepth(200);
 
   const title = scene.add.text(0, 0, "SHADOW KNIGHT", {
     fontSize: "24px",
@@ -194,22 +253,31 @@ function createHUD(scene) {
     letterSpacing: 3
   });
 
-  const barBg = scene.add.rectangle(85, 48, 170, 14, 0x303448)
-    .setOrigin(0, 0.5);
+  const barBg = scene.add.rectangle(
+    85, 48, 170, 14, 0x303448
+  ).setOrigin(0, 0.5);
 
-  healthBar = scene.add.rectangle(85, 48, 170, 14, 0x64dba0)
-    .setOrigin(0, 0.5);
+  healthBar = scene.add.rectangle(
+    85, 48, 170, 14, 0x64dba0
+  ).setOrigin(0, 0.5);
 
-  const label = scene.add.text(0, 65, "BOSQUE OLVIDADO  •  NIVEL 1", {
-    fontSize: "13px",
-    color: "#aab5d0"
+  const label = scene.add.text(
+    0, 65, "BOSQUE OLVIDADO • NIVEL 1", {
+      fontSize: "13px",
+      color: "#aab5d0"
+    }
+  );
+
+  coinsText = scene.add.text(0, 92, "🪙 0", {
+    fontSize: "18px",
+    color: "#ffd66b"
   });
 
-  hud.add([title, barBg, healthBar, label]);
+  hud.add([title, barBg, healthBar, label, coinsText]);
 }
 
 function createAtmosphere(scene) {
-  particles = scene.add.particles(0, 0, "spark", {
+  scene.add.particles(0, 0, "spark", {
     x: { min: 0, max: 1800 },
     y: { min: 100, max: 650 },
     lifespan: 7000,
@@ -225,18 +293,29 @@ function createAtmosphere(scene) {
 function update(time, delta) {
   if (!player || !player.body) return;
 
-  const left = cursors.left.isDown || keys.A.isDown || buttons.left;
-  const right = cursors.right.isDown || keys.D.isDown || buttons.right;
-  const jump = cursors.up.isDown || cursors.space.isDown ||
-    keys.W.isDown || keys.SPACE.isDown || buttons.jump;
+  if (uiOpen) {
+    player.setVelocityX(0);
+    return;
+  }
 
-  const speed = 260;
+  const left =
+    cursors.left.isDown || keys.A.isDown || buttons.left;
+
+  const right =
+    cursors.right.isDown || keys.D.isDown || buttons.right;
+
+  const jump =
+    cursors.up.isDown ||
+    cursors.space.isDown ||
+    keys.W.isDown ||
+    keys.SPACE.isDown ||
+    buttons.jump;
 
   if (left) {
-    player.setVelocityX(-speed);
+    player.setVelocityX(-260);
     facing = -1;
   } else if (right) {
-    player.setVelocityX(speed);
+    player.setVelocityX(260);
     facing = 1;
   } else {
     player.setVelocityX(0);
@@ -263,13 +342,36 @@ function update(time, delta) {
 
   enemies.forEach(enemy => {
     if (!enemy.active) return;
+
     if (Math.abs(enemy.x - player.x) < 300) {
       enemy.setVelocityX(enemy.direction * 65);
+
       if (Math.abs(enemy.x - player.x) < 65) {
         enemy.direction = enemy.x > player.x ? 1 : -1;
       }
+    } else {
+      enemy.setVelocityX(0);
+    }
+
+    if (
+      Math.abs(enemy.x - player.x) < 40 &&
+      Math.abs(enemy.y - player.y) < 65 &&
+      time - enemy.lastHit > 1200
+    ) {
+      enemy.lastHit = time;
+      hp = Math.max(0, hp - 10);
+      updateHealth();
     }
   });
+
+  chestSystem.update(delta);
+
+  inventory.addCoins(
+    chestSystem.coins - (chestSystem.lastCoins || 0)
+  );
+  chestSystem.lastCoins = chestSystem.coins;
+
+  coinsText.setText("🪙 " + inventory.coins);
 
   if (player.y > 850) {
     player.setPosition(150, 500);
@@ -291,24 +393,15 @@ function attackEnemy() {
     target.hp--;
     target.setTint(0xffffff);
 
-    world.time.delayedCall(120, () => {
-      if (target.active) target.clearTint();
-    });
+    worldFlash(target);
 
     if (target.hp <= 0) {
       target.destroy();
+      inventory.addCoins(10);
     }
   }
 
-  const slash = world.add.arc(
-    player.x + facing * 45,
-    player.y - 10,
-    42,
-    facing === 1 ? 200 : 20,
-    facing === 1 ? 340 : 160,
-    false,
-    0x8deaff
-  ).setStrokeStyle(6, 0x8deaff).setDepth(30);
+  const slash = thisArc();
 
   world.tweens.add({
     targets: slash,
@@ -319,7 +412,33 @@ function attackEnemy() {
   });
 }
 
+function thisArc() {
+  return world.add.arc(
+    player.x + facing * 45,
+    player.y - 10,
+    42,
+    facing === 1 ? 200 : 20,
+    facing === 1 ? 340 : 160,
+    false,
+    0x8deaff
+  ).setStrokeStyle(6, 0x8deaff).setDepth(30);
+}
+
+function worldFlash(target) {
+  world.time.delayedCall(120, () => {
+    if (target.active) target.clearTint();
+  });
+}
+
 function updateHealth() {
   healthBar.width = 170 * (hp / 100);
-       }
-             
+}
+
+function closeShop() {
+  if (shop.panel) {
+    shop.panel.destroy();
+    shop.panel = null;
+  }
+  uiOpen = false;
+    }
+                
