@@ -33,6 +33,7 @@ jobs:
           cp -r css js www/
           npm init -y
           npm install @capacitor/core @capacitor/android
+          npm install -D @capacitor/assets
           npm install -D @capacitor/cli
 
       - name: Configurar Capacitor
@@ -46,6 +47,7 @@ jobs:
           EOF
           npx cap add android
           npx cap sync android
+          npx capacitor-assets generate --android
 
       - name: Compilar APK
         run: |
