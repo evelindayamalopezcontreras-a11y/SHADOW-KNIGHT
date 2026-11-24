@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p www
           cp index.html www/
-          cp -r css js www/
+          cp -r CSS js www/
           npm init -y
           npm install @capacitor/core @capacitor/android
           npm install -D @capacitor/cli
