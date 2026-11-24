@@ -1,444 +1,489 @@
+let player;
+let platforms;
+let enemies = [];
+let cursors;
+let keys;
+let world;
+
+let inventory;
+let shop;
+let chestSystem;
+
+let health = 100;
+let healthBar;
+let coinText;
+let levelText;
+
+let controls = {
+  left: false,
+  right: false,
+  jump: false
+};
+
+let attackReady = true;
+let totalCoins = 0;
+
+class ShadowKnightScene extends Phaser.Scene {
+  constructor() {
+    super("ShadowKnight");
+  }
+
+  create() {
+    const scene = this;
+    world = scene;
+
+    this.physics.world.setBounds(0, 0, 2400, 720);
+
+    this.createTextures();
+    this.createBackground();
+    this.createPlatforms();
+    this.createPlayer();
+    this.createEnemies();
+    this.createSystems();
+    this.createControls();
+    this.createHUD();
+
+    this.cameras.main.setBounds(0, 0, 2400, 720);
+    this.cameras.main.startFollow(player, true, 0.08, 0.08);
+    this.cameras.main.setZoom(1);
+
+    cursors = this.input.keyboard.createCursorKeys();
+    keys = this.input.keyboard.addKeys("A,D,W,SPACE,J,I,E");
+
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(enemies, platforms);
+    this.physics.add.overlap(
+      player,
+      enemies,
+      this.playerHit,
+      null,
+      this
+    );
+  }
+
+  createTextures() {
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+
+    g.fillStyle(0x252d49);
+    g.fillRoundedRect(5, 5, 42, 62, 12);
+    g.fillStyle(0xdce7ff);
+    g.fillCircle(17, 22, 5);
+    g.fillCircle(35, 22, 5);
+    g.fillStyle(0x8c9cff);
+    g.fillRect(12, 48, 28, 7);
+    g.generateTexture("knight", 52, 72);
+    g.clear();
+
+    g.fillStyle(0x9b354f);
+    g.fillRoundedRect(4, 8, 42, 40, 10);
+    g.fillStyle(0xffd5e0);
+    g.fillCircle(16, 22, 4);
+    g.fillCircle(34, 22, 4);
+    g.generateTexture("enemy", 52, 55);
+    g.clear();
+
+    g.fillStyle(0x657da8);
+    g.fillRoundedRect(0, 0, 150, 30, 8);
+    g.generateTexture("platform", 150, 30);
+    g.destroy();
+  }
+
+  createBackground() {
+    this.add.rectangle(1200, 360, 2400, 720, 0x090d1b);
+
+    for (let i = 0; i < 20; i++) {
+      const x = i * 130;
+
+      this.add.circle(
+        x,
+        100 + Math.random() * 300,
+        2 + Math.random() * 3,
+        0x8998d8,
+        0.6
+      );
+
+      this.add.rectangle(
+        x,
+        550,
+        90,
+        340 + Math.random() * 150,
+        0x121b32
+      ).setDepth(-2);
+    }
+
+    for (let i = 0; i < 8; i++) {
+      this.add.rectangle(
+        i * 350,
+        680,
+        320,
+        80,
+        0x11182a
+      ).setDepth(-1);
+    }
+  }
+
+  createPlatforms() {
+    platforms = this.physics.add.staticGroup();
+
+    const positions = [
+      [200, 650, 500],
+      [750, 650, 400],
+      [1250, 650, 500],
+      [1850, 650, 700],
+      [500, 490, 180],
+      [950, 410, 180],
+      [1400, 500, 200],
+      [1750, 390, 200],
+      [2150, 490, 180]
+    ];
+
+    positions.forEach(([x, y, width]) => {
+      const platform = this.add.rectangle(
+        x,
+        y,
+        width,
+        30,
+        0x303d61
+      ).setStrokeStyle(2, 0x8296d4);
+
+      this.physics.add.existing(platform, true);
+      platforms.add(platform);
+    });
+  }
+
+  createPlayer() {
+    player = this.physics.add.sprite(100, 500, "knight");
+
+    player.setCollideWorldBounds(true);
+    player.setBounce(0.05);
+    player.setMaxVelocity(300, 800);
+    player.body.setSize(38, 65);
+  }
+
+  createEnemies() {
+    enemies = [];
+
+    [600, 1100, 1600, 2050].forEach((x, index) => {
+      const enemy = this.physics.add.sprite(
+        x,
+        500,
+        "enemy"
+      );
+
+      enemy.setCollideWorldBounds(true);
+      enemy.setBounce(0);
+      enemy.health = 2 + index;
+      enemy.direction = index % 2 === 0 ? 1 : -1;
+      enemy.startX = x;
+
+      enemies.push(enemy);
+    });
+  }
+
+  createSystems() {
+    inventory = new InventorySystem(this);
+    shop = new WeaponShop(this, inventory);
+    chestSystem = new ChestSystem(this);
+
+    chestSystem.create(350, 580);
+    chestSystem.create(1450, 430);
+    chestSystem.create(2200, 420);
+  }
+
+  createControls() {
+    this.createTouchButton(75, 620, "◀", () => {
+      controls.left = true;
+    }, () => {
+      controls.left = false;
+    });
+
+    this.createTouchButton(180, 620, "▶", () => {
+      controls.right = true;
+    }, () => {
+      controls.right = false;
+    });
+
+    this.createTouchButton(1130, 620, "▲", () => {
+      controls.jump = true;
+    }, () => {
+      controls.jump = false;
+    });
+
+    this.createTouchButton(1030, 520, "⚔", () => {
+      this.attack();
+    });
+
+    this.createTouchButton(1170, 80, "🎒", () => {
+      this.toggleInventory();
+    });
+
+    this.createTouchButton(1050, 80, "🛒", () => {
+      this.openShop();
+    });
+  }
+
+  createTouchButton(x, y, label, down, up) {
+    const button = this.add.text(x, y, label, {
+      fontSize: "32px",
+      color: "#ffffff",
+      backgroundColor: "#26344f",
+      padding: { x: 17, y: 12 }
+    });
+
+    button.setOrigin(0.5);
+    button.setScrollFactor(0);
+    button.setDepth(250);
+    button.setAlpha(0.85);
+    button.setInteractive();
+
+    button.on("pointerdown", () => {
+      if (down) down();
+    });
+
+    button.on("pointerup", () => {
+      if (up) up();
+    });
+
+    button.on("pointerout", () => {
+      if (up) up();
+    });
+  }
+
+  createHUD() {
+    this.add.text(25, 20, "SHADOW KNIGHT", {
+      fontSize: "24px",
+      color: "#c7d5ff",
+      fontStyle: "bold"
+    }).setScrollFactor(0).setDepth(200);
+
+    this.add.rectangle(
+      110,
+      75,
+      170,
+      14,
+      0x303448
+    ).setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(200);
+
+    healthBar = this.add.rectangle(
+      110,
+      75,
+      170,
+      14,
+      0x64dba0
+    ).setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(201);
+
+    coinText = this.add.text(25, 100, "🪙 0", {
+      fontSize: "20px",
+      color: "#ffd66b"
+    }).setScrollFactor(0).setDepth(200);
+
+    levelText = this.add.text(25, 130, "NIVEL 1", {
+      fontSize: "17px",
+      color: "#ffffff"
+    }).setScrollFactor(0).setDepth(200);
+  }
+
+  update(time, delta) {
+    if (!player || !player.active) return;
+
+    if (inventory.visible || shop.panel) {
+      player.setVelocityX(0);
+      return;
+    }
+
+    const left = controls.left || cursors.left.isDown || keys.A.isDown;
+    const right = controls.right || cursors.right.isDown || keys.D.isDown;
+    const jump = controls.jump || cursors.up.isDown ||
+      keys.W.isDown || keys.SPACE.isDown;
+
+    if (left) {
+      player.setVelocityX(-230);
+      player.setFlipX(true);
+    } else if (right) {
+      player.setVelocityX(230);
+      player.setFlipX(false);
+    } else {
+      player.setVelocityX(0);
+    }
+
+    if (jump && player.body.blocked.down) {
+      player.setVelocityY(-470);
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(keys.J)) {
+      this.attack();
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(keys.I)) {
+      this.toggleInventory();
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(keys.E)) {
+      this.openShop();
+    }
+
+    chestSystem.update(delta);
+
+    if (chestSystem.coins > totalCoins) {
+      const earned = chestSystem.coins - totalCoins;
+      inventory.addCoins(earned);
+      totalCoins = chestSystem.coins;
+    }
+
+    coinText.setText("🪙 " + inventory.coins);
+
+    enemies.forEach(enemy => {
+      if (!enemy.active) return;
+
+      if (Math.abs(enemy.x - enemy.startX) > 100) {
+        enemy.direction *= -1;
+      }
+
+      enemy.setVelocityX(enemy.direction * 45);
+      enemy.setFlipX(enemy.direction < 0);
+    });
+  }
+
+  attack() {
+    if (!attackReady || inventory.visible || shop.panel) return;
+
+    attackReady = false;
+
+    const direction = player.flipX ? -1 : 1;
+
+    const sword = this.add.rectangle(
+      player.x + direction * 45,
+      player.y,
+      65,
+      10,
+      0x9deaff
+    );
+
+    sword.setRotation(direction * -0.3);
+    sword.setDepth(100);
+
+    this.tweens.add({
+      targets: sword,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => sword.destroy()
+    });
+
+    enemies.forEach(enemy => {
+      if (!enemy.active) return;
+
+      const closeX = Math.abs(enemy.x - player.x) < 90;
+      const closeY = Math.abs(enemy.y - player.y) < 65;
+      const inFront = direction > 0
+        ? enemy.x > player.x
+        : enemy.x < player.x;
+
+      if (closeX && closeY && inFront) {
+        enemy.health--;
+
+        this.tweens.add({
+          targets: enemy,
+          alpha: 0.3,
+          yoyo: true,
+          duration: 80,
+          repeat: 1
+        });
+
+        if (enemy.health <= 0) {
+          enemy.destroy();
+          inventory.addCoins(10);
+        }
+      }
+    });
+
+    this.time.delayedCall(350, () => {
+      attackReady = true;
+    });
+  }
+
+  playerHit(playerObject, enemy) {
+    if (playerObject.invulnerable || !enemy.active) return;
+
+    health -= 10;
+    health = Math.max(0, health);
+
+    healthBar.width = 170 * (health / 100);
+
+    playerObject.invulnerable = true;
+    playerObject.setTint(0xff7777);
+
+    this.time.delayedCall(900, () => {
+      if (playerObject.active) {
+        playerObject.invulnerable = false;
+        playerObject.clearTint();
+      }
+    });
+
+    if (health <= 0) {
+      this.physics.pause();
+
+      this.add.text(
+        this.cameras.main.scrollX + 640,
+        350,
+        "HAS CAÍDO\nToca para reiniciar",
+        {
+          fontSize: "38px",
+          color: "#ff8295",
+          align: "center",
+          backgroundColor: "#10182a",
+          padding: { x: 25, y: 20 }
+        }
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(500)
+        .setInteractive()
+        .on("pointerdown", () => {
+          health = 100;
+          totalCoins = 0;
+          this.scene.restart();
+        });
+    }
+  }
+
+  toggleInventory() {
+    if (shop.panel) {
+      shop.panel.destroy();
+      shop.panel = null;
+    }
+
+    inventory.toggle();
+  }
+
+  openShop() {
+    if (inventory.visible) {
+      inventory.toggle();
+    }
+
+    shop.open();
+  }
+}
+
 const config = {
   type: Phaser.AUTO,
   parent: "game",
   width: 1280,
   height: 720,
-  backgroundColor: "#080b14",
+  backgroundColor: "#090d1b",
+  physics: {
+    default: "arcade",
+    arcade: {
+      gravity: { y: 1000 },
+      debug: false
+    }
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
-  physics: {
-    default: "arcade",
-    arcade: {
-      gravity: { y: 1100 },
-      debug: false
-    }
-  },
-  scene: { create, update }
+  scene: ShadowKnightScene
 };
 
 new Phaser.Game(config);
-
-let player, platforms, cursors, keys;
-let enemies = [];
-let chestSystem, inventory, shop, bossSystem;
-let healthBar, coinsText;
-let hp = 100;
-let facing = 1;
-let attacking = false;
-let attackTime = 0;
-let jumpReady = true;
-let buttons = {};
-let uiOpen = false;
-
-function create() {
-  const scene = this;
-
-  hp = 100;
-  enemies = [];
-  buttons = {};
-  uiOpen = false;
-
-  createTextures(scene);
-  createBackground(scene);
-
-  platforms = scene.physics.add.staticGroup();
-
-  addPlatform(scene, 640, 690, 1800, 60);
-  addPlatform(scene, 420, 535, 250, 30);
-  addPlatform(scene, 820, 440, 250, 30);
-  addPlatform(scene, 1180, 550, 250, 30);
-
-  player = scene.physics.add.sprite(150, 550, "hero");
-  player.setCollideWorldBounds(true);
-  player.setSize(34, 65);
-  player.setOffset(15, 10);
-  player.setDepth(10);
-
-  scene.physics.add.collider(player, platforms);
-
-  createEnemy(scene, 650, 600);
-  createEnemy(scene, 1050, 600);
-
-  chestSystem = new ChestSystem(scene);
-  chestSystem.create(420, 480);
-  chestSystem.create(1180, 495);
-
-  inventory = new InventorySystem(scene);
-  shop = new WeaponShop(scene, inventory);
-
-  bossSystem = new BossSystem(scene);
-
-  cursors = scene.input.keyboard.createCursorKeys();
-  keys = scene.input.keyboard.addKeys("A,D,W,SPACE,J,I,E");
-
-  createControls(scene);
-  createHUD(scene);
-  createAtmosphere(scene);
-
-  scene.cameras.main.setBounds(0, 0, 1800, 720);
-  scene.cameras.main.startFollow(player, true, 0.08, 0.08);
-  scene.physics.world.setBounds(0, 0, 1800, 720);
-
-  scene.input.keyboard.on("keydown-I", () => {
-    if (!uiOpen) {
-      inventory.toggle();
-      uiOpen = inventory.visible;
-    }
-  });
-
-  scene.input.keyboard.on("keydown-E", () => {
-    if (!uiOpen) {
-      shop.open();
-      uiOpen = true;
-    }
-  });
-}
-
-function createTextures(scene) {
-  const g = scene.make.graphics({ x: 0, y: 0, add: false });
-
-  g.fillStyle(0x161c32);
-  g.fillRoundedRect(15, 15, 34, 60, 12);
-  g.fillStyle(0x303c60);
-  g.fillRoundedRect(19, 20, 26, 44, 9);
-  g.fillStyle(0xe4eaff);
-  g.fillCircle(32, 22, 15);
-  g.fillStyle(0x090d19);
-  g.fillCircle(32, 25, 12);
-  g.fillStyle(0x70dfff);
-  g.fillRect(23, 22, 7, 3);
-  g.fillRect(34, 22, 7, 3);
-  g.generateTexture("hero", 64, 90);
-  g.clear();
-
-  g.fillStyle(0x242b3d);
-  g.fillRect(0, 0, 100, 20);
-  g.fillStyle(0x566078);
-  g.fillRect(0, 0, 100, 4);
-  g.generateTexture("platform", 100, 20);
-  g.clear();
-
-  g.fillStyle(0x39243e);
-  g.fillRoundedRect(8, 10, 44, 45, 12);
-  g.fillStyle(0xff526b);
-  g.fillCircle(21, 28, 4);
-  g.fillCircle(39, 28, 4);
-  g.generateTexture("enemy", 60, 65);
-  g.clear();
-
-  g.fillStyle(0x9dbaff);
-  g.fillCircle(5, 5, 5);
-  g.generateTexture("spark", 10, 10);
-
-  g.destroy();
-}
-
-function createBackground(scene) {
-  const bg = scene.add.graphics().setDepth(-20);
-
-  bg.fillGradientStyle(
-    0x111a32, 0x111a32,
-    0x080b14, 0x080b14, 1
-  );
-  bg.fillRect(0, 0, 1800, 720);
-
-  bg.fillStyle(0x435c94, 0.12);
-  bg.fillCircle(900, 200, 260);
-
-  bg.fillStyle(0x171d30);
-  for (let x = 0; x < 1900; x += 180) {
-    bg.fillTriangle(x, 520, x + 100, 180, x + 250, 520);
-  }
-
-  for (let x = 80; x < 1800; x += 290) {
-    bg.fillStyle(0x252b3d);
-    bg.fillRect(x, 250, 45, 380);
-    bg.fillStyle(0x414a61);
-    bg.fillRect(x - 12, 245, 70, 15);
-    bg.fillRect(x - 12, 620, 70, 18);
-    bg.fillStyle(0x121827);
-    bg.fillRect(x + 10, 260, 8, 360);
-  }
-
-  bg.fillStyle(0x101522);
-  bg.fillRect(0, 660, 1800, 60);
-}
-
-function addPlatform(scene, x, y, width, height) {
-  const platform = platforms.create(x, y, "platform");
-  platform.setDisplaySize(width, height);
-  platform.refreshBody();
-}
-
-function createEnemy(scene, x, y) {
-  const enemy = scene.physics.add.sprite(x, y, "enemy");
-
-  enemy.setCollideWorldBounds(true);
-  enemy.setSize(40, 50);
-  enemy.hp = 3;
-  enemy.direction = -1;
-  enemy.lastHit = 0;
-
-  scene.physics.add.collider(enemy, platforms);
-  enemies.push(enemy);
-}
-
-function createControls(scene) {
-  const makeButton = (x, y, symbol, name) => {
-    const bg = scene.add.circle(
-      x, y, 43, 0x26344f, 0.85
-    )
-      .setScrollFactor(0)
-      .setStrokeStyle(3, 0x8799c7, 0.8)
-      .setDepth(100);
-
-    scene.add.text(x, y, symbol, {
-      fontSize: "30px",
-      color: "#ffffff"
-    })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(101);
-
-    bg.setInteractive();
-
-    bg.on("pointerdown", () => buttons[name] = true);
-    bg.on("pointerup", () => buttons[name] = false);
-    bg.on("pointerout", () => buttons[name] = false);
-  };
-
-  makeButton(90, 620, "◀", "left");
-  makeButton(190, 620, "▶", "right");
-  makeButton(1100, 620, "▲", "jump");
-  makeButton(1200, 620, "⚔", "attack");
-
-  const bag = scene.add.text(1050, 30, "🎒", {
-    fontSize: "30px",
-    backgroundColor: "#26344f",
-    padding: { x: 10, y: 8 }
-  }).setScrollFactor(0).setDepth(150).setInteractive();
-
-  bag.on("pointerdown", () => {
-    if (shop.panel) closeShop();
-    inventory.toggle();
-    uiOpen = inventory.visible;
-  });
-
-  const store = scene.add.text(1150, 30, "⚒", {
-    fontSize: "30px",
-    backgroundColor: "#26344f",
-    padding: { x: 10, y: 8 }
-  }).setScrollFactor(0).setDepth(150).setInteractive();
-
-  store.on("pointerdown", () => {
-    if (inventory.visible) {
-      inventory.toggle();
-    }
-    shop.open();
-    uiOpen = true;
-  });
-}
-
-function createHUD(scene) {
-  const hud = scene.add.container(30, 25)
-    .setScrollFactor(0)
-    .setDepth(200);
-
-  const title = scene.add.text(0, 0, "SHADOW KNIGHT", {
-    fontSize: "24px",
-    color: "#c7d5ff",
-    fontStyle: "bold",
-    letterSpacing: 3
-  });
-
-  const barBg = scene.add.rectangle(
-    85, 48, 170, 14, 0x303448
-  ).setOrigin(0, 0.5);
-
-  healthBar = scene.add.rectangle(
-    85, 48, 170, 14, 0x64dba0
-  ).setOrigin(0, 0.5);
-
-  const label = scene.add.text(
-    0, 65, "BOSQUE OLVIDADO • NIVEL 1", {
-      fontSize: "13px",
-      color: "#aab5d0"
-    }
-  );
-
-  coinsText = scene.add.text(0, 92, "🪙 0", {
-    fontSize: "18px",
-    color: "#ffd66b"
-  });
-
-  hud.add([title, barBg, healthBar, label, coinsText]);
-}
-
-function createAtmosphere(scene) {
-  scene.add.particles(0, 0, "spark", {
-    x: { min: 0, max: 1800 },
-    y: { min: 100, max: 650 },
-    lifespan: 7000,
-    speedY: { min: -12, max: -35 },
-    speedX: { min: -8, max: 8 },
-    scale: { start: 0.7, end: 0 },
-    alpha: { start: 0.5, end: 0 },
-    frequency: 180,
-    quantity: 1
-  }).setDepth(5);
-}
-
-function update(time, delta) {
-  if (!player || !player.body) return;
-
-  if (uiOpen) {
-    player.setVelocityX(0);
-    return;
-  }
-
-  const left =
-    cursors.left.isDown || keys.A.isDown || buttons.left;
-
-  const right =
-    cursors.right.isDown || keys.D.isDown || buttons.right;
-
-  const jump =
-    cursors.up.isDown ||
-    cursors.space.isDown ||
-    keys.W.isDown ||
-    keys.SPACE.isDown ||
-    buttons.jump;
-
-  if (left) {
-    player.setVelocityX(-260);
-    facing = -1;
-  } else if (right) {
-    player.setVelocityX(260);
-    facing = 1;
-  } else {
-    player.setVelocityX(0);
-  }
-
-  player.setFlipX(facing < 0);
-
-  if (jump && player.body.blocked.down && jumpReady) {
-    player.setVelocityY(-520);
-    jumpReady = false;
-  }
-
-  if (!jump) jumpReady = true;
-
-  if ((keys.J.isDown || buttons.attack) && !attacking) {
-    attacking = true;
-    attackTime = time;
-    attackEnemy();
-  }
-
-  if (attacking && time - attackTime > 350) {
-    attacking = false;
-  }
-
-  enemies.forEach(enemy => {
-    if (!enemy.active) return;
-
-    if (Math.abs(enemy.x - player.x) < 300) {
-      enemy.setVelocityX(enemy.direction * 65);
-
-      if (Math.abs(enemy.x - player.x) < 65) {
-        enemy.direction = enemy.x > player.x ? 1 : -1;
-      }
-    } else {
-      enemy.setVelocityX(0);
-    }
-
-    if (
-      Math.abs(enemy.x - player.x) < 40 &&
-      Math.abs(enemy.y - player.y) < 65 &&
-      time - enemy.lastHit > 1200
-    ) {
-      enemy.lastHit = time;
-      hp = Math.max(0, hp - 10);
-      updateHealth();
-    }
-  });
-
-  chestSystem.update(delta);
-
-  inventory.addCoins(
-    chestSystem.coins - (chestSystem.lastCoins || 0)
-  );
-  chestSystem.lastCoins = chestSystem.coins;
-
-  coinsText.setText("🪙 " + inventory.coins);
-
-  if (player.y > 850) {
-    player.setPosition(150, 500);
-    player.setVelocity(0, 0);
-    hp = Math.max(0, hp - 10);
-    updateHealth();
-  }
-}
-
-function attackEnemy() {
-  const target = enemies.find(enemy =>
-    enemy.active &&
-    Math.abs(enemy.x - player.x) < 115 &&
-    Math.abs(enemy.y - player.y) < 100 &&
-    (enemy.x - player.x) * facing > -10
-  );
-
-  if (target) {
-    target.hp--;
-    target.setTint(0xffffff);
-
-    worldFlash(target);
-
-    if (target.hp <= 0) {
-      target.destroy();
-      inventory.addCoins(10);
-    }
-  }
-
-  const slash = thisArc();
-
-  world.tweens.add({
-    targets: slash,
-    alpha: 0,
-    scale: 1.5,
-    duration: 220,
-    onComplete: () => slash.destroy()
-  });
-}
-
-function thisArc() {
-  return world.add.arc(
-    player.x + facing * 45,
-    player.y - 10,
-    42,
-    facing === 1 ? 200 : 20,
-    facing === 1 ? 340 : 160,
-    false,
-    0x8deaff
-  ).setStrokeStyle(6, 0x8deaff).setDepth(30);
-}
-
-function worldFlash(target) {
-  world.time.delayedCall(120, () => {
-    if (target.active) target.clearTint();
-  });
-}
-
-function updateHealth() {
-  healthBar.width = 170 * (hp / 100);
-}
-
-function closeShop() {
-  if (shop.panel) {
-    shop.panel.destroy();
-    shop.panel = null;
-  }
-  uiOpen = false;
-    }
-                
+        
