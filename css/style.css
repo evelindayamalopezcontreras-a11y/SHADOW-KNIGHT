@@ -1,0 +1,60 @@
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #070b14;
+  font-family: Arial, sans-serif;
+  touch-action: none;
+}
+
+#game {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
+
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #080d19;
+  color: white;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+#rotate h1 {
+  letter-spacing: 5px;
+  font-size: 25px;
+}
+
+#rotate p {
+  margin-top: 15px;
+  color: #9aabc6;
+}
+
+#rotate span {
+  display: block;
+  font-size: 55px;
+  margin-top: 20px;
+}
+
+@media (orientation: portrait) {
+  #rotate {
+    display: flex;
+  }
+}
